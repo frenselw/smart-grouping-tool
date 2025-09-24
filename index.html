@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Grouping Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        .rule-item {
+            transition: all 0.3s ease;
+        }
+
+        .value-multiselect {
+            position: relative;
+            user-select: none;
+        }
+
+        .select-box {
+            border: 1px solid #cbd5e1;
+            border-radius: 0.375rem;
+            padding: 0.25rem 0.5rem;
+            cursor: pointer;
+            background: white;
+            min-height: 34px;
+        }
+
+        .dark .select-box {
+            border-color: #475569;
+            background: #334155;
+        }
+
+        .options-container {
+            display: none;
+            position: absolute;
+            z-index: 10;
+            background: white;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.375rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            max-height: 150px;
+            overflow-y: auto;
+            margin-top: 0.25rem;
+            width: 100%;
+        }
+
+        .dark .options-container {
+            background: #334155;
+            border-color: #475569;
+        }
+
+        .options-container.active {
+            display: block;
+        }
+
+        .options-container label {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .options-container label:hover {
+            background: #f1f5f9;
+        }
+
+        .dark .options-container label:hover {
+            background: #475569;
+        }
+
+        .violator-group-highlight {
+            border-color: #f59e0b;
+            background-color: #fefce8;
+        }
+
+        .dark .violator-group-highlight {
+            border-color: #f59e0b;
+            background-color: #4a340e;
+        }
+
+        .distribute-chart {
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid #e2e8f0;
+        }
+
+        .dark .distribute-chart {
+            border-top-color: #475569;
+        }
+
+        .chart-legend {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            font-size: 0.75rem;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+            margin-right: 0.375rem;
+        }
+
+        .bar-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 0.25rem;
+            gap: 0.5rem;
+        }
+
+        .bar-label {
+            font-size: 0.75rem;
+            color: #475569;
+            width: 60px;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        .dark .bar-label {
+            color: #94a3b8;
+        }
+
+        .bar-container {
+            flex-grow: 1;
+            display: flex;
+            height: 1.25rem;
+            background-color: #e2e8f0;
+            border-radius: 0.25rem;
+            overflow: hidden;
+        }
+
+        .dark .bar-container {
+            background-color: #475569;
+        }
+
+        .bar-segment {
+            height: 100%;
+            transition: width 0.3s ease-out;
+        }
+
+        #toggle-chart-btn i {
+            transition: transform 0.2s ease-in-out;
+        }
+
+        .help-modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 50;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .help-modal-overlay.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .help-modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 0.75rem;
+            max-width: 90%;
+            width: 600px;
+            max-height: 80vh;
+            overflow-y: auto;
+            transform: scale(0.95);
+            transition: transform 0.3s ease;
+        }
+
+        .dark .help-modal-content {
+            background-color: #1e293b;
+        }
+
+        .help-modal-overlay.visible .help-modal-content {
+            transform: scale(1);
+        }
+
+        .dark .help-modal-content::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        .dark .help-modal-content::-webkit-scrollbar-track {
+            background: #1e293b;
+        }
+
+        .dark .help-modal-content::-webkit-scrollbar-thumb {
+            background-color: #475569;
+            border-radius: 20px;
+            border: 3px solid #1e293b;
+        }
+
+        .dark .help-modal-content {
+            scrollbar-width: thin;
+            scrollbar-color: #475569 #1e293b;
+        }
+    </style>
+    <script>
+        if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+        } else {
+            document.documentElement.classList.remove('dark');
+        }
+    </script>
+</head>
+
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-200 p-4 sm:p-8">
+
+    <div class="container mx-auto max-w-5xl bg-white dark:bg-slate-800 p-6 sm:p-8 rounded-2xl shadow-lg">
+        <header class="text-center mb-8 relative">
+            <h1 class="text-3xl sm:text-4xl font-bold text-indigo-600 dark:text-indigo-400">Smart Grouping Tool</h1>
+            <p class="text-slate-500 dark:text-slate-400 mt-2">A tool for intelligently grouping students based on rules.</p>
+            <div class="absolute top-0 right-0">
+                <button id="theme-toggle" class="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700">
+                    <i class="fas fa-sun block dark:hidden"></i>
+                    <i class="fas fa-moon hidden dark:block"></i>
+                </button>
+            </div>
+        </header>
+        <main id="upload-stage">
+            <div id="drop-zone" class="border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 dark:hover:border-indigo-500 transition-all">
+                <i class="fas fa-file-excel text-5xl text-slate-400 mb-4"></i>
+                <p class="text-slate-700 dark:text-slate-300 font-medium">Drag & drop your student list (Excel) here</p>
+                <p class="text-slate-500 dark:text-slate-400 text-sm mt-1">or</p>
+                <button id="upload-btn" class="mt-4 bg-indigo-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors">Click to select a file</button>
+                <input type="file" id="file-input" class="hidden" accept=".xlsx">
+            </div>
+        </main>
+        <main id="editor-stage" class="hidden">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="md:col-span-1 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <h3 class="font-bold text-lg mb-4 text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-700 pb-2">1. Basic Settings</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-sm font-medium text-slate-700 dark:text-slate-300">Grouping Mode</label>
+                            <div class="mt-2 space-y-2">
+                                <label class="flex items-center"><input type="radio" name="grouping-mode" value="size" checked class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 bg-transparent"><span class="ml-2 text-sm text-slate-600 dark:text-slate-400">Group by size</span></label>
+                                <label class="flex items-center"><input type="radio" name="grouping-mode" value="number" class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 bg-transparent"><span class="ml-2 text-sm text-slate-600 dark:text-slate-400">Group by number of groups</span></label>
+                                <label class="flex items-center"><input type="radio" name="grouping-mode" value="custom" class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500 bg-transparent"><span class="ml-2 text-sm text-slate-600 dark:text-slate-400">Custom group sizes</span></label>
+                            </div>
+                        </div>
+                        <div id="mode-panel-size">
+                            <div>
+                                <label for="group-size" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Students per group</label>
+                                <input type="number" id="group-size" value="4" class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-700">
+                            </div>
+                            <div class="mt-4">
+                                <label for="uneven-strategy" class="block text-sm font-medium text-slate-700 dark:text-slate-300">For uneven groups</label>
+                                <select id="uneven-strategy" class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-700">
+                                    <option value="high" selected>Prefer larger groups</option>
+                                    <option value="low">Prefer smaller groups</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="mode-panel-number" class="hidden">
+                            <div>
+                                <label for="number-of-groups" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Total number of groups</label>
+                                <input type="number" id="number-of-groups" value="8" class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-700">
+                            </div>
+                        </div>
+                        <div id="mode-panel-custom" class="hidden">
+                            <div>
+                                <label for="custom-group-sizes" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Group sizes (comma-separated)</label>
+                                <input type="text" id="custom-group-sizes" placeholder="e.g., 5, 5, 4, 4" class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-700">
+                                <p id="custom-size-validation" class="text-xs mt-1 h-4"></p>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="student-id" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Student identifier field</label>
+                            <select id="student-id" class="mt-1 block w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 bg-white dark:bg-slate-700"></select>
+                        </div>
+                        <div class="pt-4 border-t border-slate-200 dark:border-slate-700">
+                            <label for="optimization-level" class="block text-sm font-medium text-slate-700 dark:text-slate-300">Optimization Level</label>
+                            <input type="range" id="optimization-level" min="1" max="4" value="2" class="w-full h-2 bg-slate-200 dark:bg-slate-600 rounded-lg appearance-none cursor-pointer mt-2">
+                            <div class="flex justify-between text-xs text-slate-500 dark:text-slate-400 mt-1 px-1">
+                                <span>Fast</span>
+                                <span>Standard</span>
+                                <span>Thorough</span>
+                                <span>Extreme</span>
+                            </div>
+                            <p id="optimization-desc" class="text-xs text-slate-600 dark:text-slate-400 mt-2 h-8"></p>
+                            <input type="hidden" id="iterations" value="30000">
+                        </div>
+                    </div>
+                </div>
+                <div class="md:col-span-2 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div class="flex justify-between items-center mb-4 border-b border-slate-200 dark:border-slate-700 pb-2">
+                        <div class="flex items-center gap-2">
+                            <h3 class="font-bold text-lg text-slate-800 dark:text-slate-200">2. Set Grouping Rules</h3>
+                            <button id="show-help-btn" class="w-6 h-6 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-400 rounded-full flex items-center justify-center hover:bg-indigo-100 hover:text-indigo-600 dark:hover:bg-indigo-900/50 dark:hover:text-indigo-400 transition-colors" title="View rule explanations">
+                                <i class="fas fa-question text-sm"></i>
+                            </button>
+                        </div>
+                        <button id="add-rule-btn" class="bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-400 px-3 py-1 rounded-md border border-indigo-600 dark:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/50 text-sm font-bold transition-colors">
+                            <i class="fas fa-plus mr-1"></i> Add Rule
+                        </button>
+                    </div>
+                    <div id="rules-container" class="space-y-3"></div>
+                </div>
+            </div>
+            <div class="text-center mt-8">
+                <button id="generate-groups-btn" class="w-full md:w-auto bg-green-600 text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-green-700 transition-transform hover:scale-105">
+                    <i class="fas fa-users-cog mr-2"></i> Generate Groups
+                </button>
+                <button id="reset-btn" class="w-full md:w-auto bg-slate-500 text-white px-8 py-3 rounded-lg font-bold text-lg hover:bg-slate-600 transition-transform hover:scale-105 mt-4 md:mt-0 md:ml-4">
+                    <i class="fas fa-undo mr-2"></i> Upload New File
+                </button>
+            </div>
+            <div id="results-container" class="mt-10 transition-all duration-300 ease-in-out"></div>
+        </main>
+    </div>
+    <div id="help-modal" class="help-modal-overlay">
+        <div class="help-modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold text-slate-800 dark:text-slate-200">Rule Explanations</h2>
+                <button id="close-help-btn" class="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 text-2xl">×</button>
+            </div>
+            <div class="space-y-4 text-slate-700 dark:text-slate-300">
+                <div>
+                    <h4 class="font-bold text-indigo-600 dark:text-indigo-400">Balance</h4>
+                    <p class="text-sm mt-1"><strong>Purpose:</strong> To make the <strong class="text-red-600 dark:text-red-400">average value</strong> of a <strong class="text-red-600 dark:text-red-400">numeric field</strong> (e.g., score, height) as close as possible across all groups.
+                    </p>
+                    <p class="text-xs mt-1 bg-slate-100 dark:bg-slate-700 p-2 rounded">
+                        <strong>Example:</strong> Select the "Midterm Score" field. The system will try to make each group's average score close to the class average, achieving a heterogeneous grouping effect.
+                    </p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-indigo-600 dark:text-indigo-400">Distribute</h4>
+                    <p class="text-sm mt-1"><strong>Purpose:</strong> To ensure a <strong class="text-red-600 dark:text-red-400">categorical field</strong> (e.g., gender, class) is <strong class="text-red-600 dark:text-red-400">proportionally distributed</strong> across all groups.
+                    </p>
+                    <p class="text-xs mt-1 bg-slate-100 dark:bg-slate-700 p-2 rounded"><strong>Example:</strong> Select the "Gender" field and check "Male" and "Female". If the class gender ratio is 2:1, the system will try to make each group's ratio close to 2:1.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-indigo-600 dark:text-indigo-400">Cluster</h4>
+                    <p class="text-sm mt-1"><strong>Purpose:</strong> To prevent students of a certain category from being <strong class="text-red-600 dark:text-red-400">alone in a group</strong>.</p>
+                    <p class="text-xs mt-1 bg-slate-100 dark:bg-slate-700 p-2 rounded">
+                        <strong>Example:</strong> Select the "Club" field and check "Basketball". The system will avoid creating a group with only one basketball club member. A group will have either zero or at least two.
+                    </p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-indigo-600 dark:text-indigo-400">Aggregate</h4>
+                    <p class="text-sm mt-1"><strong>Purpose:</strong> A <strong class="text-red-600 dark:text-red-400">hard constraint</strong> that forces all students with the same value to be in the <strong class="text-red-600 dark:text-red-400">same group</strong>.</p>
+                    <p class="text-xs mt-1 bg-slate-100 dark:bg-slate-700 p-2 rounded"><strong>Example:</strong> Select "Project ID" and check "A01". All students with project ID A01 will be placed in the same group. <strong>Note:</strong> This rule may fail if the number of students to aggregate exceeds the group size.</p>
+                </div>
+                <div>
+                    <h4 class="font-bold text-indigo-600 dark:text-indigo-400">Separate</h4>
+                    <p class="text-sm mt-1"><strong>Purpose:</strong> A <strong class="text-red-600 dark:text-red-400">hard constraint</strong> that forces all students with the same value into <strong class="text-red-600 dark:text-red-400">different groups</strong>.
+                    </p>
+                    <p class="text-xs mt-1 bg-slate-100 dark:bg-slate-700 p-2 rounded">
+                        <strong>Example:</strong> Select "Role" and check "Class President". If there are multiple class presidents, they will all be placed in different groups.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const uploadStage = document.getElementById('upload-stage');
+            const editorStage = document.getElementById('editor-stage');
+            const fileInput = document.getElementById('file-input');
+            const studentIdSelect = document.getElementById('student-id');
+            const rulesContainer = document.getElementById('rules-container');
+            const resultsContainer = document.getElementById('results-container');
+            const groupingModeRadios = document.querySelectorAll('input[name="grouping-mode"]');
+            const modePanelSize = document.getElementById('mode-panel-size');
+            const modePanelNumber = document.getElementById('mode-panel-number');
+            const modePanelCustom = document.getElementById('mode-panel-custom');
+            const customGroupSizesInput = document.getElementById('custom-group-sizes');
+            const customSizeValidation = document.getElementById('custom-size-validation');
+            const optimizationLevelSlider = document.getElementById('optimization-level');
+            const optimizationDesc = document.getElementById('optimization-desc');
+            const iterationsInput = document.getElementById('iterations');
+            const helpModal = document.getElementById('help-modal');
+            const showHelpBtn = document.getElementById('show-help-btn');
+            const closeHelpBtn = document.getElementById('close-help-btn');
+            const themeToggle = document.getElementById('theme-toggle');
+
+            let studentData = [];
+            let columnHeaders = [];
+            let ruleCounter = 0;
+            let isChartExpanded = false;
+
+            document.getElementById('upload-btn').addEventListener('click', () => fileInput.click());
+            document.getElementById('drop-zone').addEventListener('click', (e) => {
+                if (e.target.id !== 'upload-btn') fileInput.click();
+            });
+            fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+            document.getElementById('drop-zone').addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.currentTarget.classList.add('bg-indigo-50', 'border-indigo-500', 'dark:bg-indigo-900/20', 'dark:border-indigo-500');
+            });
+            document.getElementById('drop-zone').addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove('bg-indigo-50', 'border-indigo-500', 'dark:bg-indigo-900/20', 'dark:border-indigo-500');
+            });
+            document.getElementById('drop-zone').addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.currentTarget.classList.remove('bg-indigo-50', 'border-indigo-500', 'dark:bg-indigo-900/20', 'dark:border-indigo-500');
+                handleFile(e.dataTransfer.files[0]);
+            });
+            document.getElementById('add-rule-btn').addEventListener('click', () => createRuleItem());
+            document.getElementById('generate-groups-btn').addEventListener('click', runGroupingAlgorithm);
+            document.getElementById('reset-btn').addEventListener('click', () => location.reload());
+            groupingModeRadios.forEach(radio => radio.addEventListener('change', () => {
+                modePanelSize.classList.toggle('hidden', radio.value !== 'size');
+                modePanelNumber.classList.toggle('hidden', radio.value !== 'number');
+                modePanelCustom.classList.toggle('hidden', radio.value !== 'custom');
+                validateCustomSizes();
+            }));
+            customGroupSizesInput.addEventListener('input', validateCustomSizes);
+
+            optimizationLevelSlider.addEventListener('input', () => {
+                const level = optimizationLevelSlider.value;
+                const levelMap = {
+                    '1': {
+                        desc: '<strong>Fast</strong>: Good for previews, results may be suboptimal. (~10k iterations)',
+                        iterations: 10000
+                    },
+                    '2': {
+                        desc: '<strong>Standard</strong>: Recommended! A good balance of speed and quality. (~30k iterations)',
+                        iterations: 30000
+                    },
+                    '3': {
+                        desc: '<strong>Thorough</strong>: Use for complex rules, takes longer. (~80k iterations)',
+                        iterations: 80000
+                    },
+                    '4': {
+                        desc: '<strong>Extreme</strong>: For the best possible result, can be slow. (~200k iterations)',
+                        iterations: 200000
+                    }
+                };
+                const setting = levelMap[level] || levelMap['2'];
+                optimizationDesc.innerHTML = setting.desc;
+                iterationsInput.value = setting.iterations;
+            });
+
+            if (optimizationLevelSlider) {
+                optimizationLevelSlider.dispatchEvent(new Event('input'));
+            }
+
+            showHelpBtn.addEventListener('click', () => helpModal.classList.add('visible'));
+            closeHelpBtn.addEventListener('click', () => helpModal.classList.remove('visible'));
+            helpModal.addEventListener('click', (e) => {
+                if (e.target === helpModal) {
+                    helpModal.classList.remove('visible');
+                }
+            });
+
+            themeToggle.addEventListener('click', () => {
+                const isDark = document.documentElement.classList.toggle('dark');
+                localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            });
+
+            async function updateStatus(message) {
+                const statusP = resultsContainer.querySelector('p');
+                if (statusP) statusP.textContent = message;
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            function resetEditorUI() {
+                document.querySelector('input[name="grouping-mode"][value="size"]').checked = true;
+                modePanelSize.classList.remove('hidden');
+                modePanelNumber.classList.add('hidden');
+                modePanelCustom.classList.add('hidden');
+                document.getElementById('group-size').value = "4";
+                document.getElementById('uneven-strategy').value = "high";
+                document.getElementById('number-of-groups').value = "8";
+                customGroupSizesInput.value = "";
+                customSizeValidation.textContent = "";
+                optimizationLevelSlider.value = "2";
+                if (optimizationLevelSlider) {
+                    optimizationLevelSlider.dispatchEvent(new Event('input'));
+                }
+                rulesContainer.innerHTML = '';
+                resultsContainer.innerHTML = '';
+                resultsContainer.style.minHeight = '0';
+                isChartExpanded = false;
+                ruleCounter = 0;
+            }
+
+            function validateCustomSizes() {
+                const mode = document.querySelector('input[name="grouping-mode"]:checked').value;
+                const generateGroupsBtn = document.getElementById('generate-groups-btn');
+                if (mode !== 'custom' || studentData.length === 0) {
+                    generateGroupsBtn.disabled = false;
+                    customSizeValidation.textContent = '';
+                    return;
+                }
+                const sizes = customGroupSizesInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+                const sum = sizes.reduce((a, b) => a + b, 0);
+                if (customGroupSizesInput.value.trim() === '') {
+                    customSizeValidation.textContent = '';
+                    generateGroupsBtn.disabled = true;
+                    return;
+                }
+                if (sum !== studentData.length) {
+                    customSizeValidation.textContent = `Sum of sizes (${sum}) does not match total students (${studentData.length}).`;
+                    customSizeValidation.classList.add('text-red-600');
+                    customSizeValidation.classList.remove('text-green-600');
+                    generateGroupsBtn.disabled = true;
+                } else {
+                    customSizeValidation.textContent = 'Total size matches student count!';
+                    customSizeValidation.classList.remove('text-red-600');
+                    customSizeValidation.classList.add('text-green-600');
+                    generateGroupsBtn.disabled = false;
+                }
+            }
+
+            function handleFile(file) {
+                if (!file) return;
+                resetEditorUI();
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, {
+                            type: 'array'
+                        });
+                        const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+                            defval: null
+                        });
+                        if (jsonData.length === 0) {
+                            alert('No data found in the Excel file!');
+                            return;
+                        }
+                        studentData = jsonData.map(row => {
+                            const newRow = {};
+                            for (const key in row) {
+                                const trimmedKey = String(key).trim();
+                                let value = row[key];
+                                if (typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value)) {
+                                    value = Number(value);
+                                } else if (typeof value === 'string') {
+                                    value = value.trim();
+                                }
+                                newRow[trimmedKey] = (value === '' || value === null) ? null : value;
+                            }
+                            return newRow;
+                        });
+                        columnHeaders = Object.keys(studentData[0]);
+                        setupEditorUI();
+                    } catch (err) {
+                        alert('Error reading or parsing the Excel file. Please ensure it is a valid format.');
+                        console.error(err);
+                    }
+                };
+                reader.readAsArrayBuffer(file);
+            }
+
+            function setupEditorUI() {
+                uploadStage.classList.add('hidden');
+                editorStage.classList.remove('hidden');
+                studentIdSelect.innerHTML = columnHeaders.map(h => `<option value="${h}">${h}</option>`).join('');
+                validateCustomSizes();
+                const firstNumericField = columnHeaders.find(h => studentData.some(s => typeof s[h] === 'number'));
+                if (firstNumericField) {
+                    createRuleItem({
+                        type: 'Balance',
+                        field: firstNumericField
+                    });
+                }
+            }
+
+            function createRuleItem(defaultRule = {}) {
+                ruleCounter++;
+                const ruleItem = document.createElement('div');
+                ruleItem.id = `rule-${ruleCounter}`;
+                ruleItem.className = 'rule-item bg-white dark:bg-slate-800 p-3 rounded-md border border-slate-200 dark:border-slate-700 grid grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_auto] items-center gap-3';
+
+                ruleItem.innerHTML = `
+                    <div class="flex flex-col gap-1 cursor-grab" title="Drag to reorder">
+                       <button class="rule-move-btn" data-direction="up" title="Move up"><i class="fas fa-chevron-up text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"></i></button>
+                       <button class="rule-move-btn" data-direction="down" title="Move down"><i class="fas fa-chevron-down text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400"></i></button>
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <select class="rule-type-select w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-700">
+                            <option value="Balance">Balance (numeric)</option>
+                            <option value="Distribute">Distribute (categorical)</option>
+                            <option value="Cluster">Cluster (avoid singles)</option>
+                            <option value="Aggregate">Aggregate (force same group)</option>
+                            <option value="Separate">Separate (force different groups)</option>
+                        </select>
+                        <select class="rule-field-select w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-700"></select>
+                    </div>
+                    <div class="rule-options-container-wrapper relative"></div>
+                    <button class="delete-rule-btn text-red-500 hover:text-red-700 ml-auto" title="Delete rule"><i class="fas fa-trash-alt"></i></button>
+                `;
+
+                rulesContainer.appendChild(ruleItem);
+
+                const typeSelect = ruleItem.querySelector('.rule-type-select');
+                const fieldSelect = ruleItem.querySelector('.rule-field-select');
+                const optionsWrapper = ruleItem.querySelector('.rule-options-container-wrapper');
+
+                if (defaultRule.type) {
+                    typeSelect.value = defaultRule.type;
+                }
+
+                function updateValueSelector(field) {
+                    optionsWrapper.innerHTML = '';
+                    if (!field) return;
+
+                    const uniqueValues = [...new Set(studentData.map(s => s[field]).filter(v => v != null && v !== ''))].sort();
+
+                    const selectId = `multiselect-${ruleCounter}`;
+                    optionsWrapper.innerHTML = `
+                        <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Select values</label>
+                        <div id="${selectId}" class="value-multiselect">
+                            <div class="select-box text-sm text-slate-500 dark:text-slate-400">Select values...</div>
+                            <div class="options-container">
+                                <div class="p-2 flex justify-between border-b border-slate-200 dark:border-slate-600">
+                                    <button class="select-all-btn text-xs text-blue-600 dark:text-blue-400 hover:underline">Select All</button>
+                                    <button class="deselect-all-btn text-xs text-blue-600 dark:text-blue-400 hover:underline">Deselect All</button>
+                                </div>
+                                ${uniqueValues.map(val => `<label><input type="checkbox" class="mr-2" value="${val}"> ${val}</label>`).join('')}
+                            </div>
+                        </div>
+                    `;
+
+                    const multiselect = optionsWrapper.querySelector('.value-multiselect');
+                    const selectBox = multiselect.querySelector('.select-box');
+                    const optionsContainer = multiselect.querySelector('.options-container');
+                    const checkboxes = optionsContainer.querySelectorAll('input[type="checkbox"]');
+
+                    const updateSelectBoxText = () => {
+                        const selected = Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.parentElement.textContent.trim());
+                        if (selected.length === 0) {
+                            selectBox.textContent = 'Select values...';
+                        } else if (selected.length > 2) {
+                            selectBox.textContent = `${selected.slice(0, 2).join(', ')}... (${selected.length})`;
+                        } else {
+                            selectBox.textContent = selected.join(', ');
+                        }
+                        selectBox.classList.toggle('text-slate-500', selected.length === 0);
+                        selectBox.classList.toggle('dark:text-slate-400', selected.length === 0);
+                    };
+
+                    const closeMenu = () => {
+                        optionsContainer.classList.remove('active');
+                        document.removeEventListener('click', handleDocClick, true);
+                    };
+                    const handleDocClick = (e) => {
+                        if (!multiselect.contains(e.target)) closeMenu();
+                    };
+                    selectBox.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const isActive = optionsContainer.classList.toggle('active');
+                        if (isActive) {
+                            setTimeout(() => document.addEventListener('click', handleDocClick, true), 0);
+                        } else {
+                            document.removeEventListener('click', handleDocClick, true);
+                        }
+                    });
+
+                    optionsContainer.addEventListener('change', updateSelectBoxText);
+                    multiselect.querySelector('.select-all-btn').addEventListener('click', (e) => {
+                        e.preventDefault();
+                        checkboxes.forEach(cb => cb.checked = true);
+                        updateSelectBoxText();
+                    });
+                    multiselect.querySelector('.deselect-all-btn').addEventListener('click', (e) => {
+                        e.preventDefault();
+                        checkboxes.forEach(cb => cb.checked = false);
+                        updateSelectBoxText();
+                    });
+                }
+
+                function updateRuleOptions() {
+                    const selectedType = typeSelect.value;
+                    const isBalance = selectedType === 'Balance';
+
+                    const applicableHeaders = isBalance ? columnHeaders.filter(h => studentData.some(s => typeof s[h] === 'number')) : columnHeaders;
+                    const currentFieldValue = fieldSelect.value;
+                    fieldSelect.innerHTML = applicableHeaders.map(h => `<option value="${h}">${h}</option>`).join('') || `<option>No applicable fields</option>`;
+
+                    if (applicableHeaders.includes(currentFieldValue)) {
+                        fieldSelect.value = currentFieldValue;
+                    } else if (defaultRule.field && applicableHeaders.includes(defaultRule.field)) {
+                        fieldSelect.value = defaultRule.field;
+                    } else if (applicableHeaders.length > 0) {
+                        fieldSelect.value = applicableHeaders[0];
+                    }
+
+                    if (isBalance) {
+                        optionsWrapper.innerHTML = `
+                            <label class="block text-xs text-slate-500 dark:text-slate-400 mb-1">Balance Strictness</label>
+                            <select class="rule-strictness-select w-full px-2 py-1 border border-slate-300 dark:border-slate-600 rounded-md text-sm bg-white dark:bg-slate-700">
+                                <option value="0.75">Loose</option>
+                                <option value="0.5" selected>Standard</option>
+                                <option value="0.25">Strict</option>
+                                <option value="0.15">Very Strict</option>
+                            </select>
+                        `;
+                    } else {
+                        updateValueSelector(fieldSelect.value);
+                    }
+                }
+
+                typeSelect.addEventListener('change', updateRuleOptions);
+                fieldSelect.addEventListener('change', () => {
+                    if (typeSelect.value !== 'Balance') {
+                        updateValueSelector(fieldSelect.value);
+                    }
+                });
+                ruleItem.querySelector('.delete-rule-btn').addEventListener('click', () => ruleItem.remove());
+
+                ruleItem.querySelectorAll('.rule-move-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const direction = e.currentTarget.dataset.direction;
+                        const parent = ruleItem.parentElement;
+                        if (direction === 'up' && ruleItem.previousElementSibling) {
+                            parent.insertBefore(ruleItem, ruleItem.previousElementSibling);
+                        } else if (direction === 'down' && ruleItem.nextElementSibling) {
+                            parent.insertBefore(ruleItem.nextElementSibling, ruleItem);
+                        }
+                    });
+                });
+
+                updateRuleOptions();
+            }
+
+            class Group {
+                constructor(students, groupNumber) {
+                    this.students = students;
+                    this.groupNumber = groupNumber;
+                    this.rules = [];
+                    this._cost = null;
+                }
+                get size() {
+                    return this.students.length;
+                }
+                addRule(rule) {
+                    if (!this.rules.find(r => r.id === rule.id)) this.rules.push(rule);
+                }
+                getCost() {
+                    if (this._cost !== null) return this._cost;
+                    let totalCost = 0;
+                    for (const rule of this.rules) {
+                        totalCost += rule.getCost(this.students);
+                    }
+                    this._cost = totalCost;
+                    return totalCost;
+                }
+                invalidateCost() {
+                    this._cost = null;
+                }
+            }
+
+            function swap(g1, s1, g2, s2) {
+                const index1 = g1.students.indexOf(s1);
+                const index2 = g2.students.indexOf(s2);
+                if (index1 !== -1 && index2 !== -1) {
+                    g1.students[index1] = s2;
+                    g2.students[index2] = s1;
+                    g1.invalidateCost();
+                    g2.invalidateCost();
+                }
+            }
+
+            function makeInitialGroups(students, groupSizes, rules) {
+                let mutableStudents = JSON.parse(JSON.stringify(students));
+                const balanceRules = rules.filter(r => r.type === 'Balance');
+
+                if (balanceRules.length > 0) {
+                    mutableStudents.forEach(s => {
+                        s._strength = 0;
+                        balanceRules.forEach(rule => {
+                            const score = s[rule.field] || rule.classStats.mean;
+                            s._strength += (score - rule.classStats.min) / (rule.classStats.range || 1);
+                        });
+                    });
+                } else {
+                    mutableStudents.forEach(s => {
+                        s._strength = Math.random();
+                    });
+                }
+                mutableStudents.sort((a, b) => a._strength - b._strength);
+
+                const groups = groupSizes.map((size, i) => new Group([], i + 1));
+
+                let currentStudents = [...mutableStudents];
+                let groupIdx = 0;
+                while (currentStudents.length > 0) {
+                    const student = currentStudents.shift();
+                    let placed = false;
+                    for (let i = 0; i < groups.length; i++) {
+                        const targetGroupIndex = (groupIdx + i) % groups.length;
+                        if (groups[targetGroupIndex].students.length < groupSizes[targetGroupIndex]) {
+                            groups[targetGroupIndex].students.push(student);
+                            groupIdx = (targetGroupIndex + 1) % groups.length;
+                            placed = true;
+                            break;
+                        }
+                    }
+                }
+                return groups.filter(g => g.size > 0);
+            }
+
+            async function runOptimization(groups, rules, iterations) {
+                if (groups.length < 2) return;
+                groups.forEach(group => rules.forEach(rule => group.addRule(rule)));
+
+                for (let i = 0; i < iterations; i++) {
+                    if (i % 1000 === 0) {
+                        await updateStatus(`Optimizing... (${Math.round(i / iterations * 100)}%)`);
+                    }
+
+                    const g1 = groups[Math.floor(Math.random() * groups.length)];
+                    let g2 = groups[Math.floor(Math.random() * groups.length)];
+
+                    let attempts = 0;
+                    while (g1 === g2 && attempts < 10) {
+                        g2 = groups[Math.floor(Math.random() * groups.length)];
+                        attempts++;
+                    }
+
+                    if (g1 === g2 || g1.size === 0 || g2.size === 0) continue;
+
+                    const s1 = g1.students[Math.floor(Math.random() * g1.size)];
+                    const s2 = g2.students[Math.floor(Math.random() * g2.size)];
+
+                    const costBefore = g1.getCost() + g2.getCost();
+                    swap(g1, s1, g2, s2);
+                    const costAfter = g1.getCost() + g2.getCost();
+
+                    const temperature = 1 - (i / iterations);
+                    if (costAfter > costBefore && Math.random() > Math.exp((costBefore - costAfter) / (temperature * 0.1 + 0.001))) {
+                        swap(g2, s1, g1, s2);
+                    }
+                }
+            }
+
+            function createRuleCostFunction(rule, allStudents) {
+                const HARD_PENALTY = 1000;
+                const VERY_HARD_PENALTY = 5000;
+
+                if (rule.type === 'Balance') {
+                    const weightMap = {
+                        '0.15': 4.0,
+                        '0.25': 2.0,
+                        '0.5': 1.0,
+                        '0.75': 0.5
+                    };
+                    const weight = weightMap[rule.toleranceFactor] || 1.0;
+                    const scores = allStudents.map(s => s[rule.field]).filter(v => typeof v === 'number' && isFinite(v));
+                    if (scores.length === 0) {
+                        rule.classStats = {
+                            mean: 0,
+                            stdDev: 1
+                        };
+                        rule.getCost = () => 0;
+                        return;
+                    }
+                    const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+                    const stdDev = Math.sqrt(scores.map(x => Math.pow(x - mean, 2)).reduce((a, b) => a + b, 0) / scores.length);
+                    rule.classStats = {
+                        mean,
+                        stdDev: stdDev || 1,
+                        min: Math.min(...scores),
+                        range: Math.max(...scores) - Math.min(...scores)
+                    };
+
+                    rule.getCost = (groupStudents) => {
+                        if (groupStudents.length < 2) return 0;
+                        const groupScores = groupStudents.map(s => s[rule.field]).filter(v => typeof v === 'number' && isFinite(v));
+                        if (groupScores.length === 0) return 0;
+                        const groupMean = groupScores.reduce((a, b) => a + b, 0) / groupScores.length;
+                        const deviation = Math.abs(groupMean - mean);
+                        const normalized_deviation_cost = (deviation / (rule.classStats.stdDev || 1)) ** 2;
+                        return normalized_deviation_cost * weight;
+                    };
+                } else if (rule.type === 'Distribute') {
+                    const totalStudents = allStudents.length;
+                    if (totalStudents === 0) {
+                        rule.getCost = () => 0;
+                        return;
+                    }
+                    const classCounts = {};
+                    rule.values.forEach(val => {
+                        classCounts[val] = allStudents.filter(s => String(s[rule.field]) === val).length;
+                    });
+
+                    rule.getCost = (groupStudents) => {
+                        if (groupStudents.length === 0) return 0;
+                        const groupSize = groupStudents.length;
+                        const groupCounts = {};
+                        rule.values.forEach(val => {
+                            groupCounts[val] = groupStudents.filter(s => String(s[rule.field]) === val).length;
+                        });
+                        let totalCost = 0;
+                        for (const val of rule.values) {
+                            const totalCountForValue = classCounts[val];
+                            const idealCount = (totalCountForValue / totalStudents) * groupSize;
+                            const idealLower = Math.floor(idealCount);
+                            const idealUpper = Math.ceil(idealCount);
+                            const actual = groupCounts[val];
+                            const dist = Math.min(Math.abs(actual - idealLower), Math.abs(actual - idealUpper));
+                            totalCost += dist ** 2;
+                        }
+                        return totalCost;
+                    };
+                } else if (rule.type === 'Cluster') {
+                    rule.getCost = (groupStudents) => {
+                        let cost = 0;
+                        rule.values.forEach(val => {
+                            const countInGroup = groupStudents.filter(s => String(s[rule.field]) === val).length;
+                            if (countInGroup === 1) {
+                                cost += HARD_PENALTY;
+                            }
+                        });
+                        return cost;
+                    };
+                } else if (rule.type === 'Aggregate') {
+                    const classCounts = {};
+                    rule.values.forEach(val => {
+                        classCounts[val] = allStudents.filter(s => String(s[rule.field]) === val).length;
+                    });
+
+                    rule.getCost = (groupStudents) => {
+                        let cost = 0;
+                        for (const val of rule.values) {
+                            const totalInClass = classCounts[val] || 0;
+                            if (totalInClass <= 1) continue;
+
+                            const countInGroup = groupStudents.filter(s => String(s[rule.field]) === val).length;
+
+                            if (countInGroup > 0 && countInGroup < totalInClass) {
+                                cost += VERY_HARD_PENALTY;
+                            }
+                        }
+                        return cost;
+                    };
+                } else if (rule.type === 'Separate') {
+                    rule.getCost = (groupStudents) => {
+                        let cost = 0;
+                        for (const val of rule.values) {
+                            const countInGroup = groupStudents.filter(s => String(s[rule.field]) === val).length;
+                            if (countInGroup > 1) {
+                                cost += (countInGroup - 1) * VERY_HARD_PENALTY;
+                            }
+                        }
+                        return cost;
+                    };
+                }
+            }
+
+            async function runGroupingAlgorithm() {
+                resultsContainer.style.minHeight = '60vh';
+                resultsContainer.innerHTML = `<div class="text-center p-8"><i class="fas fa-spinner fa-spin text-3xl text-indigo-600 dark:text-indigo-400"></i><p class="mt-2">Preparing to group...</p></div>`;
+                await new Promise(resolve => setTimeout(resolve, 50));
+
+                try {
+                    const iterations = parseInt(document.getElementById('iterations').value, 10) || 30000;
+                    const rules = Array.from(rulesContainer.querySelectorAll('.rule-item')).map(item => {
+                        const type = item.querySelector('.rule-type-select').value;
+                        const field = item.querySelector('.rule-field-select').value;
+                        let values = [];
+                        if (type !== 'Balance') {
+                            values = Array.from(item.querySelectorAll('.value-multiselect input:checked')).map(cb => cb.value)
+                        }
+                        const toleranceFactor = (type === 'Balance') ? parseFloat(item.querySelector('.rule-strictness-select').value) : 0.5;
+                        return {
+                            id: item.id,
+                            type,
+                            field,
+                            values,
+                            toleranceFactor
+                        };
+                    });
+
+                    rules.forEach(rule => createRuleCostFunction(rule, studentData));
+
+                    await updateStatus('Calculating group sizes and creating initial groups...');
+                    const groupSizes = calculateGroupSizes();
+                    let groups = makeInitialGroups(studentData, groupSizes, rules);
+
+                    await runOptimization(groups, rules, iterations);
+
+                    await updateStatus('Grouping complete. Generating report...');
+                    displayResults(groups, rules);
+
+                } catch (e) {
+                    console.error("An error occurred during grouping:", e);
+                    resultsContainer.innerHTML = `<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert"><strong class="font-bold">An error occurred!</strong><span class="block sm:inline">${e.message}</span></div>`;
+                }
+            }
+
+            function calculateGroupSizes() {
+                const totalStudents = studentData.length;
+                const mode = document.querySelector('input[name="grouping-mode"]:checked').value;
+                let groupSizes = [];
+                if (mode === 'size') {
+                    const groupSize = parseInt(document.getElementById('group-size').value, 10);
+                    if (isNaN(groupSize) || groupSize <= 0) throw new Error("Please set a valid 'Students per group'!");
+                    const unevenStrategy = document.getElementById('uneven-strategy').value;
+                    const remainder = totalStudents % groupSize;
+                    if (remainder === 0) {
+                        const numGroups = totalStudents / groupSize;
+                        for (let i = 0; i < numGroups; i++) groupSizes.push(groupSize);
+                    } else {
+                        if (unevenStrategy === 'high') {
+                            const baseGroupCount = Math.floor(totalStudents / groupSize);
+                            const numPlusOne = remainder;
+                            for (let i = 0; i < numPlusOne; i++) groupSizes.push(groupSize + 1);
+                            for (let i = 0; i < baseGroupCount - numPlusOne; i++) groupSizes.push(groupSize);
+                        } else {
+                            const numGroups = Math.ceil(totalStudents / groupSize);
+                            const numSmallerGroups = numGroups * groupSize - totalStudents;
+                            const numStandardGroups = numGroups - numSmallerGroups;
+                            for (let i = 0; i < numStandardGroups; i++) groupSizes.push(groupSize);
+                            for (let i = 0; i < numSmallerGroups; i++) groupSizes.push(groupSize - 1);
+                        }
+                    }
+                } else if (mode === 'number') {
+                    const numGroups = parseInt(document.getElementById('number-of-groups').value, 10);
+                    if (isNaN(numGroups) || numGroups <= 0) throw new Error("Please set a valid 'Total number of groups'!");
+                    const baseSize = Math.floor(totalStudents / numGroups);
+                    const remainder = totalStudents % numGroups;
+                    for (let i = 0; i < numGroups; i++) {
+                        groupSizes.push(baseSize + (i < remainder ? 1 : 0));
+                    }
+                } else if (mode === 'custom') {
+                    validateCustomSizes();
+                    if (document.getElementById('generate-groups-btn').disabled) throw new Error("Custom group sizes do not sum to the total number of students!");
+                    groupSizes = customGroupSizesInput.value.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n) && n > 0);
+                    if (groupSizes.length === 0) throw new Error("Please enter valid custom group sizes!");
+                }
+                return groupSizes.filter(s => s > 0);
+            }
+
+            function displayResults(groups, rules) {
+                groups.sort((a, b) => a.groupNumber - b.groupNumber);
+                const totalCost = groups.reduce((sum, g) => sum + g.getCost(), 0);
+
+                const colorPalettes = [
+                    ['#8b5cf6', '#a78bfa', '#c4b5fd', '#6d28d9', '#4c1d95', '#a855f7', '#d8b4fe'],
+                    ['#10b981', '#34d399', '#6ee7b7', '#059669', '#047857', '#06b6d4', '#22d3ee'],
+                    ['#f97316', '#fb923c', '#fdba74', '#ea580c', '#c2410c', '#f59e0b', '#facc15'],
+                    ['#3b82f6', '#60a5fa', '#93c5fd', '#2563eb', '#1d4ed8', '#4f46e5', '#7c3aed'],
+                    ['#ec4899', '#f472b6', '#f9a8d4', '#d946ef', '#c026d3', '#a855f7', '#8b5cf6']
+                ];
+                let chartPaletteIndex = 0;
+
+                const ruleNameMap = {
+                    'Balance': 'Balance',
+                    'Distribute': 'Distribute',
+                    'Cluster': 'Cluster',
+                    'Aggregate': 'Aggregate',
+                    'Separate': 'Separate'
+                };
+
+                let statsHTML = `<div class="bg-slate-100 dark:bg-slate-900/50 p-4 rounded-lg mb-6"><h3 class="font-bold text-lg mb-2 text-slate-700 dark:text-slate-200">Overall Statistics Summary</h3>`;
+                statsHTML += `<div class="text-sm"><span class="font-medium">System Total Cost:</span> <b class="text-blue-600 dark:text-blue-400">${totalCost.toFixed(2)}</b> (lower is better)</div>`;
+
+                const orderedRuleIds = Array.from(rulesContainer.querySelectorAll('.rule-item')).map(item => item.id);
+
+                orderedRuleIds.forEach(ruleId => {
+                    const rule = rules.find(r => r.id === ruleId);
+                    if (!rule) return;
+                    const badGroups = groups.filter(g => rule.getCost(g.students) > 0.01);
+                    statsHTML += `<div class="text-sm mt-1"><span class="font-medium">${ruleNameMap[rule.type] || rule.type} - ${rule.field}</span>: <b class="${badGroups.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-green-600 dark:text-green-400'}">${badGroups.length}</b> groups with imperfections</div>`;
+                    if (rule.type === 'Balance') {
+                        const groupAvgs = groups.map(g => {
+                            const groupScores = g.students.map(s => s[rule.field]).filter(v => typeof v === 'number' && isFinite(v));
+                            return groupScores.length > 0 ? groupScores.reduce((a, b) => a + b, 0) / groupScores.length : rule.classStats.mean;
+                        });
+                        const meanOfMeans = groupAvgs.reduce((a, b) => a + b, 0) / groupAvgs.length;
+                        const stdDevOfMeans = Math.sqrt(groupAvgs.map(x => Math.pow(x - meanOfMeans, 2)).reduce((a, b) => a + b, 0) / groupAvgs.length);
+                        statsHTML += `<div class="text-xs pl-4 text-slate-600 dark:text-slate-400">Class Avg: ${rule.classStats.mean.toFixed(2)}, Std Dev of Group Avgs: <b class="text-blue-700 dark:text-blue-400">${stdDevOfMeans.toFixed(2)}</b></div>`;
+                    }
+                });
+
+                const chartableRules = rules.filter(r => ['Distribute', 'Cluster', 'Aggregate', 'Separate'].includes(r.type) && r.values.length > 0);
+
+                if (chartableRules.length > 0) {
+                    const chartContentClass = isChartExpanded ? '' : 'hidden';
+                    const toggleBtnText = isChartExpanded ? 'Collapse Chart' : 'Expand Chart';
+                    const toggleBtnIconClass = isChartExpanded ? 'fa-chevron-up' : 'fa-chevron-down';
+
+                    let chartHTML = `<div class="distribute-chart">
+                        <div class="flex justify-between items-center">
+                             <h4 class="font-bold text-md text-slate-700 dark:text-slate-300">Rule Distribution Chart</h4>
+                             <button id="toggle-chart-btn" class="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-medium">
+                                <span class="btn-text">${toggleBtnText}</span> <i class="fas ${toggleBtnIconClass} ml-1"></i>
+                             </button>
+                        </div>
+                        <div id="distribute-chart-content" class="${chartContentClass} mt-2">`;
+
+                    chartableRules.forEach(rule => {
+                        const colors = colorPalettes[chartPaletteIndex % colorPalettes.length];
+                        chartPaletteIndex++;
+
+                        let chartTitle = `${ruleNameMap[rule.type] || rule.type}: ${rule.field}`;
+                        let legendNote = '';
+                        switch (rule.type) {
+                            case 'Distribute':
+                                legendNote = 'Goal: Proportional distribution in each group.';
+                                break;
+                            case 'Cluster':
+                                legendNote = 'Goal: Avoid singles (group count should be 0 or >1).';
+                                break;
+                            case 'Aggregate':
+                                legendNote = 'Goal: All members should be in the same group.';
+                                break;
+                            case 'Separate':
+                                legendNote = 'Goal: All members should be in different groups.';
+                                break;
+                        }
+
+                        chartHTML += `<div class="mt-4 pt-3 border-t border-slate-200 dark:border-slate-700">
+                            <p class="font-semibold text-sm text-slate-600 dark:text-slate-300 mb-1">${chartTitle}</p>
+                            <p class="text-xs text-slate-500 dark:text-slate-400 mb-2">${legendNote}</p>
+                            <div class="chart-legend">`;
+                        rule.values.forEach((val, index) => {
+                            chartHTML += `<div class="legend-item"><span class="legend-color" style="background-color: ${colors[index % colors.length]};"></span>${val}</div>`;
+                        });
+                        chartHTML += `</div>`;
+                        groups.forEach(group => {
+                            chartHTML += `<div class="bar-row">
+                                            <div class="bar-label">Group ${group.groupNumber}</div>
+                                            <div class="bar-container">`;
+                            if (group.size > 0) {
+                                rule.values.forEach((val, index) => {
+                                    const count = group.students.filter(s => String(s[rule.field]) === val).length;
+                                    const percentage = (count / group.size) * 100;
+                                    if (count > 0) {
+                                        chartHTML += `<div class="bar-segment" style="width: ${percentage}%; background-color: ${colors[index % colors.length]};" title="${val}: ${count} student(s)"></div>`;
+                                    }
+                                });
+                            }
+                            chartHTML += `</div></div>`;
+                        });
+                        chartHTML += `</div>`;
+                    });
+                    chartHTML += `</div></div>`;
+                    statsHTML += chartHTML;
+                }
+
+                statsHTML += `<div class="mt-4"><button id="download-excel-btn" class="w-full bg-blue-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors text-sm"><i class="fas fa-download mr-2"></i>Download Grouping Results (Excel)</button></div></div>`;
+
+                let groupsHTML = `<h2 class="text-2xl font-bold text-center mb-6">Grouping Results</h2><div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">`;
+                groups.forEach(group => {
+                    const groupCost = group.getCost();
+                    const highlightClass = groupCost > 0.01 ? 'violator-group-highlight' : '';
+
+                    let groupStatsHTML = '';
+
+                    rules.filter(r => r.type === 'Balance').forEach(r => {
+                        const groupScores = group.students.map(s => s[r.field]).filter(v => typeof v === 'number');
+                        if (groupScores.length > 0) {
+                            const groupMean = groupScores.reduce((a, b) => a + b, 0) / groupScores.length;
+
+                            let formattedMean;
+                            if (groupMean === 0) formattedMean = "0";
+                            else if (Math.abs(groupMean) >= 1000 || Math.abs(groupMean) < 0.01) formattedMean = groupMean.toPrecision(3);
+                            else if (Math.abs(groupMean) >= 100) formattedMean = Math.round(groupMean);
+                            else if (Math.abs(groupMean) >= 10) formattedMean = groupMean.toFixed(1);
+                            else formattedMean = groupMean.toFixed(2);
+
+                            groupStatsHTML += `<span class="text-xs font-normal bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-1 rounded-full">${r.field} Avg: ${formattedMean}</span>`;
+                        } else {
+                            groupStatsHTML += `<span class="text-xs font-normal bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300 px-2 py-1 rounded-full">${r.field} Avg: N/A</span>`;
+                        }
+                    });
+
+                    groupsHTML += `<div class="bg-white dark:bg-slate-800 p-4 rounded-lg border border-slate-200 dark:border-slate-700 flex flex-col ${highlightClass}">
+                                    <div class="flex justify-between items-center mb-3 flex-wrap gap-1">
+                                        <h4 class="font-bold text-indigo-700 dark:text-indigo-400">Group ${group.groupNumber} (${group.size} members)</h4>
+                                        <div class="flex flex-wrap gap-1">${groupStatsHTML}</div>
+                                    </div>
+                                    <ul class="divide-y divide-slate-200 dark:divide-slate-700 flex-grow">`;
+
+                    const relevantFields = [...new Set(rules.map(r => r.field))];
+                    group.students.sort((a, b) => String(a[studentIdSelect.value] || '').localeCompare(String(b[studentIdSelect.value] || '')));
+                    group.students.forEach(student => {
+                        const studentId = student[studentIdSelect.value] || 'N/A';
+                        let attributesHTML = relevantFields.map(field => {
+                            let value = student[field];
+                            if (typeof value === 'number') {
+                                const ruleForField = rules.find(r => r.field === field && r.type === 'Balance');
+                                if (ruleForField) {
+                                    if (value === 0) value = "0";
+                                    else if (Math.abs(value) >= 1000 || Math.abs(value) < 0.01) value = value.toPrecision(3);
+                                    else if (Math.abs(value) >= 10) value = value.toFixed(1);
+                                    else value = value.toFixed(2);
+                                }
+                            }
+                            return value != null ? `<span class="font-medium">${field}:</span> ${value}` : '';
+                        }).filter(Boolean).join(', ');
+                        groupsHTML += `<li class="py-2 text-sm text-slate-800 dark:text-slate-300"><div>${studentId}</div>${attributesHTML ? `<div class="text-xs text-slate-500 dark:text-slate-400 mt-1">(${attributesHTML})</div>` : ''}</li>`;
+                    });
+                    groupsHTML += '</ul></div>';
+                });
+                groupsHTML += '</div>';
+                resultsContainer.innerHTML = statsHTML + groupsHTML;
+                document.getElementById('download-excel-btn').addEventListener('click', () => {
+                    generateAndDownloadExcel(groups);
+                });
+
+                if (chartableRules.length > 0) {
+                    const toggleBtn = document.getElementById('toggle-chart-btn');
+                    const chartContent = document.getElementById('distribute-chart-content');
+                    const btnText = toggleBtn.querySelector('.btn-text');
+                    const btnIcon = toggleBtn.querySelector('i');
+                    toggleBtn.addEventListener('click', () => {
+                        const isNowHidden = chartContent.classList.toggle('hidden');
+                        isChartExpanded = !isNowHidden;
+                        if (isNowHidden) {
+                            btnText.textContent = 'Expand Chart';
+                            btnIcon.classList.remove('fa-chevron-up');
+                            btnIcon.classList.add('fa-chevron-down');
+                        } else {
+                            btnText.textContent = 'Collapse Chart';
+                            btnIcon.classList.remove('fa-chevron-down');
+                            btnIcon.classList.add('fa-chevron-up');
+                        }
+                    });
+                }
+            }
+
+            function generateAndDownloadExcel(groups) {
+                const flattenedData = groups.flatMap(group =>
+                    group.students.map(student => {
+                        const cleanStudent = { ...student
+                        };
+                        delete cleanStudent._strength;
+                        return {
+                            'Group Number': group.groupNumber,
+                            ...cleanStudent
+                        };
+                    })
+                );
+                const headersFromData = flattenedData.length > 0 ? Object.keys(flattenedData[0]) : [];
+                const worksheet = XLSX.utils.json_to_sheet(flattenedData, {
+                    header: headersFromData
+                });
+                const workbook = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(workbook, worksheet, "Grouping Results");
+                XLSX.writeFile(workbook, "Grouping_Results.xlsx");
+            }
+        });
+    </script>
+    <footer class="text-center text-xs text-slate-400 dark:text-slate-500 mt-8 pb-4">
+        <p>
+            This program is licensed under the
+            <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noopener noreferrer" class="text-indigo-500 hover:underline dark:text-indigo-400">
+                GNU AGPLv3
+            </a>. The source code is viewable within this HTML file.
+        </p>
+    </footer>
+</body>
+
+</html>
